@@ -20,7 +20,7 @@ namespace BulkyBookWeb.Areas.Admin.Controllers
         }
         public IActionResult Index()
         {
-            List<Product> objProductList = _unitOfWork.Product.GetAll().ToList();
+            List<Product> objProductList = _unitOfWork.Product.GetAll(includeProperties:"Category").ToList();
             
             return View(objProductList);
         }
@@ -61,6 +61,17 @@ namespace BulkyBookWeb.Areas.Admin.Controllers
                     string fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
                     string productPath = Path.Combine(wwwRootPath, @"images\product");
 
+                    if(!string.IsNullOrEmpty(productVM.Product.ImageUrl))
+                    {
+                        //delete the old image
+                        var oldImagePath = Path.Combine(wwwRootPath, productVM.Product.ImageUrl.TrimStart('\\'));
+                        if(System.IO.Path.Exists(oldImagePath))
+                        {
+                            System.IO.File.Delete(oldImagePath);
+                        }
+
+                    }
+
                     using (var fileStream = new FileStream(Path.Combine(productPath,fileName), FileMode.Create))
                     {
                         file.CopyTo(fileStream);
@@ -68,10 +79,19 @@ namespace BulkyBookWeb.Areas.Admin.Controllers
 
                     productVM.Product.ImageUrl = @"\images\product\" + fileName;
                 }
-                _unitOfWork.Product.Add(productVM.Product);
+                
+                if(productVM.Product.Id == 0)
+                {
+                    _unitOfWork.Product.Add(productVM.Product);
+                    TempData["success"] = "Product Created Successfully!";
+                }
+                else
+                {
+                    _unitOfWork.Product.Update(productVM.Product);
+                    TempData["success"] = "Product Created Successfully!";
+                }
                 _unitOfWork.Save();
 
-                TempData["success"] = "Product Created Successfully!";
                 return RedirectToAction("Index");
             }
             else
@@ -85,35 +105,45 @@ namespace BulkyBookWeb.Areas.Admin.Controllers
             }
         }
 
+        #region API CALLS
+
+        [HttpGet]
+        public IActionResult GetAll()
+        {
+
+            List<Product> objProductList = _unitOfWork.Product.GetAll(includeProperties: "Category").ToList();
+
+            return Json(new { data = objProductList });
+        }
+
+        [HttpDelete]
         public IActionResult Delete(int? id)
         {
-            if (id == null || id == 0)
-            {
-                return NotFound();
-            }
-            Product? categoryfromDb = _unitOfWork.Product.Get(u => u.Id == id);
+            var productToBeDeleted = _unitOfWork.Product.Get(u => u.Id == id);
 
-            if (categoryfromDb == null)
+            if(productToBeDeleted == null)
             {
-                return NotFound();
+                return Json(new { success=false, message = "Error while deleting" });
             }
-            return View(categoryfromDb);
-        }
 
-        [HttpPost, ActionName("Delete")]
-        public IActionResult DeletePOST(int? id)
-        {
-            Product? obj = _unitOfWork.Product.Get(u => u.Id == id);
+            var oldImagePath = Path.Combine(_webHostEnvironment.WebRootPath, 
+                               productToBeDeleted.ImageUrl.TrimStart('\\'));
 
-            if (obj == null)
+            if (System.IO.Path.Exists(oldImagePath))
             {
-                return NotFound();
+                System.IO.File.Delete(oldImagePath);
             }
-            _unitOfWork.Product.Remove(obj);
+
+            _unitOfWork.Product.Remove(productToBeDeleted);
             _unitOfWork.Save();
 
-            TempData["success"] = "Product Deleted Successfully!";
-            return RedirectToAction("Index");
+            List<Product> objProductList = _unitOfWork.Product.GetAll(includeProperties: "Category").ToList();
+
+            return Json(new { success= true, message="Deleted successful" });
         }
+
+
+        #endregion
     }
+
 }
